@@ -1,0 +1,62 @@
+[
+  {
+    "input": {
+      "question": "What is the capital of France?"
+    },
+    "expected": {
+      "answer": "Paris"
+    },
+    "metadata": {
+      "source": "geography_book",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "input": {
+      "question": "Explain quantum entanglement."
+    },
+    "expected": {
+      "answer": "Quantum entanglement is a physical phenomenon that occurs when a group of particles are generated, interact, or share spatial proximity in a way such that the quantum state of each particle of the group cannot be described independently of the state of the others, including when the particles are separated by a large distance."
+    },
+    "metadata": {
+      "source": "physics_paper",
+      "difficulty": "hard"
+    }
+  },
+  {
+    "input": {
+      "question": "How do I reset my password in FNO?"
+    },
+    "expected": {
+      "answer": "Go to System Administration > Users, select your user, and click Reset Password."
+    },
+    "metadata": {
+      "source": "fno_docs",
+      "difficulty": "medium"
+    }
+  },
+  {
+    "input": {
+      "question": "What is the exchange rate for USD to EUR today?"
+    },
+    "expected": {
+      "answer": "I cannot provide real-time data."
+    },
+    "metadata": {
+      "source": "finance_faq",
+      "difficulty": "easy"
+    }
+  },
+  {
+    "input": {
+      "question": "Write a python script to sort a list."
+    },
+    "expected": {
+      "answer": "my_list.sort()"
+    },
+    "metadata": {
+      "source": "coding_interview",
+      "difficulty": "medium"
+    }
+  }
+]

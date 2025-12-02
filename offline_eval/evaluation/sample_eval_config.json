@@ -1,0 +1,74 @@
+{
+  "suite_name": "Comprehensive Evaluation Suite",
+  "evaluators": [
+    {
+      "name": "Exact Match",
+      "category": "Automated - Statistical",
+      "type": "local-function",
+      "target": "exact_match",
+      "pass_threshold": 1.0
+    },
+    {
+      "name": "F1 Score",
+      "category": "Automated - Statistical",
+      "type": "local-function",
+      "target": "f1_score",
+      "pass_threshold": 0.8
+    },
+    {
+      "name": "Semantic Similarity",
+      "category": "Automated - Semantic",
+      "type": "azure-builtin",
+      "target": "Similarity",
+      "pass_threshold": 3.0
+    },
+    {
+      "name": "Keyword Presence (Compliance)",
+      "category": "Automated - Rule-based",
+      "type": "local-function",
+      "target": "keyword_check",
+      "pass_threshold": 1.0,
+      "parameters": {
+        "keywords": ["disclaimer", "confidential"]
+      }
+    },
+    {
+      "name": "JSON Format Check",
+      "category": "Automated - Rule-based",
+      "type": "local-function",
+      "target": "json_validity",
+      "pass_threshold": 1.0
+    },
+    {
+      "name": "Groundedness",
+      "category": "LLM-as-a-judge",
+      "type": "azure-builtin",
+      "target": "Groundedness",
+      "pass_threshold": 3.0,
+      "parameters": {
+        "azure_deployment": "gpt-4"
+      }
+    },
+    {
+      "name": "Relevance",
+      "category": "LLM-as-a-judge",
+      "type": "azure-builtin",
+      "target": "Relevance",
+      "pass_threshold": 3.0
+    },
+    {
+      "name": "Coherence",
+      "category": "LLM-as-a-judge",
+      "type": "azure-builtin",
+      "target": "Coherence",
+      "pass_threshold": 3.0
+    },
+    {
+      "name": "Domain Expert Review",
+      "category": "Human evaluation",
+      "type": "human-placeholder",
+      "target": "manual_review",
+      "pass_threshold": 1.0
+    }
+  ]
+}

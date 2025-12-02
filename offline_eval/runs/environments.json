@@ -1,0 +1,11 @@
+[
+  {
+    "id": "default-env",
+    "name": "Aurora Test Env 001",
+    "env_id": "aurora-test-001",
+    "env_version": "10.0.38",
+    "agent_name": "finance-advisor-bot",
+    "api_endpoint": "http://mock",
+    "created_at": "2025-12-02 15:12:45"
+  }
+]

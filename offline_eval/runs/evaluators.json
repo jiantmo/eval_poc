@@ -1,0 +1,99 @@
+[
+  {
+    "id": "exact-match",
+    "name": "Exact Match",
+    "category": "Automated - Statistical",
+    "type": "local-function",
+    "target": "exact_match",
+    "pass_threshold": 1.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "f1-score",
+    "name": "F1 Score",
+    "category": "Automated - Statistical",
+    "type": "local-function",
+    "target": "f1_score",
+    "pass_threshold": 0.8,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "semantic-similarity",
+    "name": "Semantic Similarity",
+    "category": "Automated - Semantic",
+    "type": "azure-builtin",
+    "target": "Similarity",
+    "pass_threshold": 3.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "keyword-presence-(compliance)",
+    "name": "Keyword Presence (Compliance)",
+    "category": "Automated - Rule-based",
+    "type": "local-function",
+    "target": "keyword_check",
+    "pass_threshold": 1.0,
+    "parameters": {
+      "keywords": [
+        "disclaimer",
+        "confidential"
+      ]
+    },
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "json-format-check",
+    "name": "JSON Format Check",
+    "category": "Automated - Rule-based",
+    "type": "local-function",
+    "target": "json_validity",
+    "pass_threshold": 1.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "groundedness",
+    "name": "Groundedness",
+    "category": "LLM-as-a-judge",
+    "type": "azure-builtin",
+    "target": "Groundedness",
+    "pass_threshold": 3.0,
+    "parameters": {
+      "azure_deployment": "gpt-4"
+    },
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "relevance",
+    "name": "Relevance",
+    "category": "LLM-as-a-judge",
+    "type": "azure-builtin",
+    "target": "Relevance",
+    "pass_threshold": 3.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "coherence",
+    "name": "Coherence",
+    "category": "LLM-as-a-judge",
+    "type": "azure-builtin",
+    "target": "Coherence",
+    "pass_threshold": 3.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  },
+  {
+    "id": "domain-expert-review",
+    "name": "Domain Expert Review",
+    "category": "Human evaluation",
+    "type": "human-placeholder",
+    "target": "manual_review",
+    "pass_threshold": 1.0,
+    "parameters": {},
+    "created_at": "2025-12-02 15:12:45"
+  }
+]

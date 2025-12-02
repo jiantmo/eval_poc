@@ -1,0 +1,7 @@
+{
+  "env_id": "aurora-test-001",
+  "env_version": "10.0.38",
+  "agent_name": "finance-advisor-bot",
+  "description": "Finance Advisor Bot on FNO 10.0.38 Integration Environment",
+  "api_endpoint": "http://localhost:8000/mock_agent"
+}
