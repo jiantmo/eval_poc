@@ -108,13 +108,57 @@ class HumanPlaceholderEvaluator(BaseEvaluator):
             "reasoning": "Queued for human expert review."
         }
 
+class CustomEvaluator(BaseEvaluator):
+    """
+    Mock implementation for specific custom evaluators.
+    """
+    def evaluate(self, input_data: Any, actual_output: Any, expected_output: Any) -> Dict[str, Any]:
+        target = self.config.target
+        print(f"  [Custom] Running {target}...")
+        
+        if target == "ProductRecommendation":
+            # Mock metrics for Product Recommendation
+            return {
+                "metric": "ProductRecommendation",
+                "score": round(random.uniform(0.7, 1.0), 2),
+                "passed": True,
+                "reasoning": "Mock Product Recommendation logic.",
+                "details": {
+                    "precision": round(random.uniform(0.8, 1.0), 2),
+                    "recall": round(random.uniform(0.7, 0.9), 2),
+                    "diversity": round(random.uniform(0.5, 1.0), 2)
+                }
+            }
+        elif target == "ApprovalEvaluator":
+            # Mock metrics for Approval
+            return {
+                "metric": "ApprovalEvaluator",
+                "score": round(random.uniform(0.8, 1.0), 2),
+                "passed": True,
+                "reasoning": "Mock Approval logic.",
+                "details": {
+                    "accuracy": round(random.uniform(0.9, 1.0), 2),
+                    "latency_ms": random.randint(50, 200)
+                }
+            }
+        else:
+            return {
+                "metric": target,
+                "score": 0.0,
+                "passed": False,
+                "reasoning": f"Unknown custom evaluator: {target}"
+            }
+
 class EvaluatorFactory:
     @staticmethod
     def create(config) -> BaseEvaluator:
         if config.type == "azure-builtin":
             return AzureBuiltInEvaluator(config)
+        elif config.type == "custom":
+            return CustomEvaluator(config)
         elif config.type == "custom-service":
-            return CustomServiceEvaluator(config)
+            # Fallback or remove if not used
+            return CustomEvaluator(config) 
         elif config.type == "local-function":
             return LocalFunctionEvaluator(config)
         elif config.type == "human-placeholder":

@@ -28,10 +28,28 @@ st.markdown("""
         font-size: 1.8rem;
         font-weight: 600;
         color: #333;
-        margin-bottom: 1rem;
+        margin-bottom: 0.2rem;
     }
     .stButton>button {
         border-radius: 4px;
+        border: 1px solid #0078D4;
+        color: white;
+        background-color: #0078D4;
+    }
+    .stButton>button:hover {
+        background-color: #106ebe;
+        color: white;
+        border-color: #106ebe;
+    }
+    /* Primary buttons (e.g. type="primary") override */
+    div[data-testid="stButton"] button[kind="primary"] {
+        background-color: #0078D4;
+        color: white;
+        border: none;
+    }
+    div[data-testid="stButton"] button[kind="primary"]:hover {
+        background-color: #106ebe;
+        color: white;
     }
     .status-badge {
         padding: 4px 8px;
@@ -50,10 +68,10 @@ store = st.session_state.store
 
 # --- Sidebar Navigation ---
 with st.sidebar:
-    st.title("AI Eval Center")
+    st.title("Offline Eval")
     selected_page = st.radio(
         "Navigation", 
-        ["Dashboard", "Runs", "Test Suites", "Datasets", "Environments", "Evaluators"],
+        ["Dashboard", "Runs", "Test Suites", "Datasets", "Environments", "Evaluators", "Data Management"],
         index=1
     )
     st.divider()
@@ -213,24 +231,77 @@ def new_env_dialog():
     
     col1, col2 = st.columns(2)
     with col1:
-        env_id = st.text_input("Aurora Env ID")
         agent_name = st.text_input("Agent Name")
     with col2:
-        env_version = st.text_input("Env Version")
         api_endpoint = st.text_input("API Endpoint", value="http://mock-endpoint")
         
     if st.button("Save Environment", type="primary"):
-        if not name or not env_id or not agent_name:
-            st.error("Name, Env ID and Agent Name are required.")
+        if not name or not agent_name:
+            st.error("Name and Agent Name are required.")
             return
             
         store.save_environment(EnvironmentRecord(
             id=str(uuid.uuid4()),
             name=name,
-            env_id=env_id,
-            env_version=env_version,
+            env_id="custom",
+            env_version="custom",
             agent_name=agent_name,
             api_endpoint=api_endpoint,
+            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+        st.rerun()
+
+AURORA_MOCK_DATA = [
+    {
+        "env_name": "aurorabapenv87b96",
+        "version": "9.2.25072.00130 (7/15/2025)",
+        "org_user": "aurorauser01@aurorafinanceintegration02.onmicrosoft.com"
+    },
+    {
+        "env_name": "aurorabapenve4449",
+        "version": "9.2.25114.00129 (11/26/2025)",
+        "org_user": "aurorauser01@aurorafinanceintegration02.onmicrosoft.com"
+    },
+    {
+        "env_name": "aurorabapenv4ae83",
+        "version": "9.2.25114.00151 (12/1/2025)",
+        "org_user": "aurorauser01@auroraprojopsintegration01.onmicrosoft.com"
+    }
+]
+
+@st.dialog("Add Aurora Environment")
+def add_aurora_env_dialog():
+    st.write("Select an existing Aurora environment to add.")
+    
+    # Format options for display
+    options = [f"{e['env_name']} (v{e['version'].split(' ')[0]})" for e in AURORA_MOCK_DATA]
+    selected_option = st.selectbox("Select Environment", options)
+    
+    # Find selected data
+    selected_index = options.index(selected_option)
+    selected_data = AURORA_MOCK_DATA[selected_index]
+    
+    st.info(f"**User:** {selected_data['org_user']}\n\n**Version:** {selected_data['version']}")
+    
+    agent_options = [
+        "Account reconciliation agent",
+        "Supplier Communications Agent - inbound",
+        "Copilot for finance and operations apps",
+        "Account reconciliation amounts",
+        "Supplier Communications Agent - outbound",
+        "ExpenseAgent-Line(Preview)",
+        "Expense Entry Agent(Preview)"
+    ]
+    agent_name = st.selectbox("Agent Name", agent_options)
+    
+    if st.button("Add Environment", type="primary"):
+        store.save_environment(EnvironmentRecord(
+            id=str(uuid.uuid4()),
+            name=selected_data['env_name'], # Use env_name as Display Name
+            env_id=selected_data['env_name'], # Use env_name as ID
+            env_version=selected_data['version'],
+            agent_name=agent_name,
+            api_endpoint="http://mock-aurora-endpoint",
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
         st.rerun()
@@ -243,8 +314,26 @@ def new_evaluator_dialog():
     
     col1, col2 = st.columns(2)
     with col1:
-        eval_type = st.selectbox("Type", ["custom-service", "local-function", "azure-builtin"])
-        target = st.text_input("Target (Endpoint/Func Name)", placeholder="http://localhost:8000/eval")
+        eval_type = st.selectbox("Type", ["azure-builtin", "custom"])
+        
+        if eval_type == "azure-builtin":
+            builtin_options = [
+                "Groundedness", 
+                "Relevance", 
+                "Coherence", 
+                "Fluency", 
+                "Similarity",
+                "F1 Score", 
+                "Blei Score", 
+                "Gleu Score", 
+                "Meteor Score", 
+                "Rouge Score"
+            ]
+            target = st.selectbox("Built-in Evaluator", builtin_options)
+        else:
+            custom_options = ["ProductRecommendation Evaluator", "ApprovalEvaluator"]
+            target = st.selectbox("Custom Evaluator", custom_options)
+            
     with col2:
         pass_threshold = st.number_input("Pass Threshold", min_value=0.0, value=0.5)
     
@@ -289,46 +378,75 @@ def new_test_suite_dialog():
     st.divider()
     st.subheader("Select Evaluators")
     
-    # Group by category
-    evaluators_by_category = {}
+    # Prepare data for editor
+    eval_data = []
+    custom_metrics_map = {
+        "ProductRecommendation Evaluator": "Precision, Recall, Diversity",
+        "ApprovalEvaluator": "Accuracy, Latency"
+    }
+
     for e in evaluators:
-        if e.category not in evaluators_by_category:
-            evaluators_by_category[e.category] = []
-        evaluators_by_category[e.category].append(e.name)
-
-    # Step 1: Select Categories
-    all_categories = list(evaluators_by_category.keys())
-    selected_categories = st.multiselect(
-        "1. Select Evaluator Categories", 
-        all_categories, 
-        default=all_categories
-    )
-
-    # Step 2: Select Metrics for each category
-    selected_evals = []
-    if selected_categories:
-        st.write("2. Select Metrics")
-        for cat in selected_categories:
-            names = evaluators_by_category[cat]
-            sel = st.multiselect(
-                f"{cat} Metrics", 
-                names, 
-                default=names, 
-                key=f"ts_dlg_{cat}"
-            )
-            selected_evals.extend(sel)
+        metrics = e.target
+        if e.type != "azure-builtin":
+            metrics = custom_metrics_map.get(e.name, "Custom Metrics")
+            
+        eval_data.append({
+            "Select": False,
+            "Type": "Azure Built-in" if e.type == "azure-builtin" else "Custom",
+            "Evaluator": e.name,
+            "Metrics": metrics
+        })
+    
+    selected_eval_names = []
+    
+    if eval_data:
+        edited_df = st.data_editor(
+            pd.DataFrame(eval_data),
+            column_config={
+                "Select": st.column_config.CheckboxColumn(
+                    "Select",
+                    help="Select to include",
+                    default=False,
+                    width="small"
+                ),
+                "Type": st.column_config.TextColumn(
+                    "Type",
+                    width="medium",
+                    disabled=True
+                ),
+                "Evaluator": st.column_config.TextColumn(
+                    "Evaluator Name",
+                    width="medium",
+                    disabled=True
+                ),
+                "Metrics": st.column_config.TextColumn(
+                    "Metrics",
+                    width="large",
+                    disabled=True
+                ),
+            },
+            disabled=["Type", "Evaluator", "Metrics"],
+            hide_index=True,
+            use_container_width=True,
+            height=500,
+            key="evaluator_selector"
+        )
+        
+        selected_eval_names = edited_df[edited_df["Select"]]["Evaluator"].tolist()
+    else:
+        st.info("No evaluators found.")
 
     if st.button("Save Test Suite", type="primary"):
         if not name or not selected_ds_name or not selected_env_name:
             st.error("Please complete all fields.")
             return
         
-        if not selected_evals:
+        if not selected_eval_names:
             st.error("Please select at least one evaluator.")
             return
             
         # Find evaluator IDs
-        selected_ids = [e.id for e in evaluators if e.name in selected_evals]
+        selected_ids = [e.id for e in evaluators if e.name in selected_eval_names]
 
         store.save_test_suite(TestSuiteRecord(
             id=str(uuid.uuid4()),
@@ -666,12 +784,15 @@ def render_datasets_view():
                     st.error(f"Invalid JSON: {e}")
 
 def render_environments_view():
-    col_title, col_action = st.columns([6, 1])
+    col_title, col_new, col_aurora = st.columns([10, 1, 1.2])
     with col_title:
         st.markdown('<div class="main-header">Environments</div>', unsafe_allow_html=True)
-    with col_action:
-        if st.button("➕ New Environment", type="primary"):
+    with col_new:
+        if st.button("➕ New", type="primary", key="new_env_btn"):
             new_env_dialog()
+    with col_aurora:
+        if st.button("☁️ Aurora", type="primary", key="aurora_env_btn"):
+            add_aurora_env_dialog()
 
     envs = store.list_environments()
     if not envs:
@@ -695,7 +816,134 @@ def render_evaluators_view():
         return
 
     data = [{"Name": e.name, "Category": e.category, "Type": e.type, "Target": e.target, "Threshold": e.pass_threshold} for e in evals]
-    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+    
+    # Calculate height to show all rows (approx 35px per row + header)
+    # Adding a small buffer to ensure no scrollbar appears
+    table_height = (len(data) + 1) * 35 + 3
+    
+    st.dataframe(
+        pd.DataFrame(data), 
+        use_container_width=True, 
+        hide_index=True,
+        height=table_height
+    )
+
+def render_data_management_view():
+    st.markdown('<div class="main-header">Data Management</div>', unsafe_allow_html=True)
+    
+    tab1, tab2 = st.tabs(["Export Data", "Import Data"])
+    
+    with tab1:
+        st.subheader("Export Configuration")
+        st.write("Select the data types you want to export to a JSON file.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            exp_runs = st.checkbox("Runs", value=True)
+            exp_suites = st.checkbox("Test Suites", value=True)
+            exp_datasets = st.checkbox("Datasets", value=True)
+        with col2:
+            exp_envs = st.checkbox("Environments", value=True)
+            exp_evals = st.checkbox("Evaluators", value=True)
+            
+        if st.button("Generate Export File", type="primary"):
+            export_data = {}
+            if exp_runs:
+                export_data['runs'] = [r.to_dict() for r in store.list_runs()]
+            if exp_suites:
+                export_data['test_suites'] = [s.to_dict() for s in store.list_test_suites()]
+            if exp_datasets:
+                export_data['datasets'] = [d.to_dict() for d in store.list_datasets()]
+            if exp_envs:
+                export_data['environments'] = [e.to_dict() for e in store.list_environments()]
+            if exp_evals:
+                export_data['evaluators'] = [e.to_dict() for e in store.list_evaluators()]
+            
+            json_str = json.dumps(export_data, indent=2)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            st.download_button(
+                label="Download JSON",
+                data=json_str,
+                file_name=f"offline_eval_export_{timestamp}.json",
+                mime="application/json"
+            )
+
+    with tab2:
+        st.subheader("Import Configuration")
+        st.write("Upload a previously exported JSON file to import data.")
+        
+        uploaded_file = st.file_uploader("Choose a JSON file", type="json")
+        
+        if uploaded_file is not None:
+            try:
+                import_data = json.load(uploaded_file)
+                
+                st.write("### Found Data:")
+                
+                # Check what's in the file
+                found_keys = []
+                if 'runs' in import_data: found_keys.append('runs')
+                if 'test_suites' in import_data: found_keys.append('test_suites')
+                if 'datasets' in import_data: found_keys.append('datasets')
+                if 'environments' in import_data: found_keys.append('environments')
+                if 'evaluators' in import_data: found_keys.append('evaluators')
+                
+                if not found_keys:
+                    st.warning("No valid configuration data found in this file.")
+                else:
+                    selected_imports = st.multiselect(
+                        "Select data types to import:",
+                        found_keys,
+                        default=found_keys
+                    )
+                    
+                    if st.button("Import Selected Data", type="primary"):
+                        count_summary = []
+                        
+                        if 'datasets' in selected_imports:
+                            count = 0
+                            for item in import_data['datasets']:
+                                store.save_dataset(DatasetRecord.from_dict(item))
+                                count += 1
+                            count_summary.append(f"{count} Datasets")
+
+                        if 'environments' in selected_imports:
+                            count = 0
+                            for item in import_data['environments']:
+                                store.save_environment(EnvironmentRecord.from_dict(item))
+                                count += 1
+                            count_summary.append(f"{count} Environments")
+
+                        if 'evaluators' in selected_imports:
+                            count = 0
+                            for item in import_data['evaluators']:
+                                store.save_evaluator(EvaluatorRecord.from_dict(item))
+                                count += 1
+                            count_summary.append(f"{count} Evaluators")
+
+                        if 'test_suites' in selected_imports:
+                            count = 0
+                            for item in import_data['test_suites']:
+                                store.save_test_suite(TestSuiteRecord.from_dict(item))
+                                count += 1
+                            count_summary.append(f"{count} Test Suites")
+
+                        if 'runs' in selected_imports:
+                            count = 0
+                            for item in import_data['runs']:
+                                store.save_run(RunRecord.from_dict(item))
+                                count += 1
+                            count_summary.append(f"{count} Runs")
+                            
+                        st.success(f"Imported successfully: {', '.join(count_summary)}")
+                        time.sleep(2)
+                        st.rerun()
+                        
+            except json.JSONDecodeError:
+                st.error("Invalid JSON file.")
+            except Exception as e:
+                st.error(f"Error importing data: {e}")
 
 # --- Main Routing ---
 
@@ -711,3 +959,5 @@ elif selected_page == "Environments":
     render_environments_view()
 elif selected_page == "Evaluators":
     render_evaluators_view()
+elif selected_page == "Data Management":
+    render_data_management_view()
