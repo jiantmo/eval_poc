@@ -6,12 +6,12 @@ import uuid
 import os
 from datetime import datetime
 
-from dataset.model import load_dataset
+from dataset.model import load_dataset, EvalRecord
 from environment.config import AuroraEnvConfig
 from evaluation.config import EvaluationSuiteConfig, EvaluatorConfig
 from evaluation.engine import EvaluationEngine
 from runner import EvalRunner
-from runs.store import DataStore, RunRecord, DatasetRecord, EnvironmentRecord, EvaluatorRecord
+from runs.store import DataStore, RunRecord, DatasetRecord, EnvironmentRecord, EvaluatorRecord, TestSuiteRecord
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -53,8 +53,8 @@ with st.sidebar:
     st.title("AI Eval Center")
     selected_page = st.radio(
         "Navigation", 
-        ["Runs", "Datasets", "Environments", "Evaluators"],
-        index=0
+        ["Dashboard", "Runs", "Test Suites", "Datasets", "Environments", "Evaluators"],
+        index=1
     )
     st.divider()
     st.caption("v0.1.0 POC")
@@ -65,6 +65,10 @@ def run_evaluation_logic(run_id, run_name, dataset_record, env_record, selected_
     Executes the evaluation and updates the run record.
     """
     # 1. Create Initial Record
+    # Find evaluator IDs
+    all_evals = store.list_evaluators()
+    selected_ids = [e.id for e in all_evals if e.name in selected_evaluators]
+
     new_run = RunRecord(
         id=run_id,
         name=run_name,
@@ -72,7 +76,10 @@ def run_evaluation_logic(run_id, run_name, dataset_record, env_record, selected_
         agent=env_record.agent_name,
         dataset=dataset_record.name,
         status="Running",
-        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        dataset_id=dataset_record.id,
+        environment_id=env_record.id,
+        evaluator_ids=selected_ids
     )
     store.save_run(new_run)
     
@@ -80,7 +87,8 @@ def run_evaluation_logic(run_id, run_name, dataset_record, env_record, selected_
     
     try:
         # 2. Load Data & Config
-        records = load_dataset(dataset_record.file_path)
+        # records = load_dataset(dataset_record.file_path)
+        records = [EvalRecord.from_dict(r) for r in dataset_record.content]
         
         env_config = AuroraEnvConfig(
             env_id=env_record.env_id,
@@ -93,7 +101,7 @@ def run_evaluation_logic(run_id, run_name, dataset_record, env_record, selected_
         runner = EvalRunner(env_config)
         
         # Load available evaluators from store
-        all_evals = store.list_evaluators()
+        # all_evals = store.list_evaluators()
         
         active_eval_configs = []
         for e_rec in all_evals:
@@ -178,19 +186,20 @@ def new_dataset_dialog():
         
         try:
             # Validate JSON
-            json.loads(file_content)
+            parsed_content = json.loads(file_content)
             
-            # Save to file
-            filename = f"dataset/{name.lower().replace(' ', '_')}_{int(time.time())}.json"
-            os.makedirs("dataset", exist_ok=True)
-            with open(filename, "w", encoding="utf-8") as f:
-                f.write(file_content)
+            # Save to file (Optional, maybe skip or keep for backup)
+            # filename = f"dataset/{name.lower().replace(' ', '_')}_{int(time.time())}.json"
+            # os.makedirs("dataset", exist_ok=True)
+            # with open(filename, "w", encoding="utf-8") as f:
+            #     f.write(file_content)
                 
             store.save_dataset(DatasetRecord(
                 id=str(uuid.uuid4()),
                 name=name,
                 description=desc,
-                file_path=filename,
+                file_path=None,
+                content=parsed_content,
                 created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             ))
             st.rerun()
@@ -256,60 +265,207 @@ def new_evaluator_dialog():
         ))
         st.rerun()
 
+@st.dialog("New Test Suite")
+def new_test_suite_dialog():
+    st.write("Create a reusable Test Suite configuration.")
+    
+    name = st.text_input("Suite Name", placeholder="e.g. Regression Suite v1")
+    description = st.text_area("Description", placeholder="Purpose of this suite...")
+    
+    # Load options
+    datasets = store.list_datasets()
+    envs = store.list_environments()
+    evaluators = store.list_evaluators()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        ds_map = {d.name: d for d in datasets}
+        selected_ds_name = st.selectbox("Dataset", list(ds_map.keys()) if ds_map else [])
+        
+    with col2:
+        env_map = {e.name: e for e in envs}
+        selected_env_name = st.selectbox("Environment", list(env_map.keys()) if env_map else [])
+
+    st.divider()
+    st.subheader("Select Evaluators")
+    
+    # Group by category
+    evaluators_by_category = {}
+    for e in evaluators:
+        if e.category not in evaluators_by_category:
+            evaluators_by_category[e.category] = []
+        evaluators_by_category[e.category].append(e.name)
+
+    # Step 1: Select Categories
+    all_categories = list(evaluators_by_category.keys())
+    selected_categories = st.multiselect(
+        "1. Select Evaluator Categories", 
+        all_categories, 
+        default=all_categories
+    )
+
+    # Step 2: Select Metrics for each category
+    selected_evals = []
+    if selected_categories:
+        st.write("2. Select Metrics")
+        for cat in selected_categories:
+            names = evaluators_by_category[cat]
+            sel = st.multiselect(
+                f"{cat} Metrics", 
+                names, 
+                default=names, 
+                key=f"ts_dlg_{cat}"
+            )
+            selected_evals.extend(sel)
+
+    if st.button("Save Test Suite", type="primary"):
+        if not name or not selected_ds_name or not selected_env_name:
+            st.error("Please complete all fields.")
+            return
+        
+        if not selected_evals:
+            st.error("Please select at least one evaluator.")
+            return
+            
+        # Find evaluator IDs
+        selected_ids = [e.id for e in evaluators if e.name in selected_evals]
+
+        store.save_test_suite(TestSuiteRecord(
+            id=str(uuid.uuid4()),
+            name=name,
+            description=description,
+            dataset_id=ds_map[selected_ds_name].id,
+            environment_id=env_map[selected_env_name].id,
+            evaluator_ids=selected_ids,
+            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+        st.rerun()
+
 @st.dialog("New Evaluation Run")
 def new_run_dialog():
-    st.write("Configure your evaluation run parameters.")
+    st.write("Select Test Suites to run.")
     
-    with st.form("new_run_form"):
-        run_name = st.text_input("Run Name", value=f"Eval Run {datetime.now().strftime('%Y%m%d-%H%M')}")
+    run_name_base = st.text_input("Run Name Prefix", value=f"Eval Run {datetime.now().strftime('%Y%m%d-%H%M')}")
+    
+    test_suites = store.list_test_suites()
+    
+    if not test_suites:
+        st.warning("No Test Suites found. Please create one first.")
+        return
+
+    # Allow multiple selection
+    ts_map = {ts.name: ts for ts in test_suites}
+    selected_suites = st.multiselect("Select Test Suites", list(ts_map.keys()))
+    
+    if selected_suites:
+        st.divider()
+        st.caption("Preview Selected Suites")
         
-        # Load options from store
-        datasets = store.list_datasets()
-        envs = store.list_environments()
-        evaluators = store.list_evaluators()
+        # Pre-fetch data for preview
+        all_datasets = {d.id: d.name for d in store.list_datasets()}
+        all_envs = {e.id: e.name for e in store.list_environments()}
+        all_evals = {e.id: e.name for e in store.list_evaluators()}
         
-        col1, col2 = st.columns(2)
-        with col1:
-            ds_map = {d.name: d for d in datasets}
-            selected_ds_name = st.selectbox("Dataset", list(ds_map.keys()) if ds_map else [])
+        for suite_name in selected_suites:
+            suite = ts_map[suite_name]
+            ds_name = all_datasets.get(suite.dataset_id, "Unknown")
+            env_name = all_envs.get(suite.environment_id, "Unknown")
+            eval_names = [all_evals.get(eid, "Unknown") for eid in suite.evaluator_ids]
             
-        with col2:
-            env_map = {e.name: e for e in envs}
-            selected_env_name = st.selectbox("Environment", list(env_map.keys()) if env_map else [])
+            with st.expander(f"📄 {suite_name}", expanded=False):
+                st.markdown(f"**Dataset:** {ds_name}")
+                st.markdown(f"**Environment:** {env_name}")
+                st.markdown(f"**Evaluators ({len(eval_names)}):** {', '.join(eval_names)}")
 
-        st.subheader("Select Evaluators")
-        
-        # Group by category
-        evaluators_by_category = {}
-        for e in evaluators:
-            if e.category not in evaluators_by_category:
-                evaluators_by_category[e.category] = []
-            evaluators_by_category[e.category].append(e.name)
-
-        selected_evals = []
-        for cat, names in evaluators_by_category.items():
-            with st.expander(cat, expanded=False):
-                sel = st.multiselect(f"Metrics", names, default=names, key=f"dlg_{cat}")
-                selected_evals.extend(sel)
-
-        submitted = st.form_submit_button("Start Evaluation", type="primary")
-        
-        if submitted:
-            if not run_name or not selected_ds_name or not selected_env_name:
-                st.error("Please complete all fields.")
-                return
+    if st.button("Start Evaluation", type="primary"):
+        if not selected_suites:
+            st.error("Please select at least one Test Suite.")
+            return
             
-            run_id = str(uuid.uuid4())
-            run_evaluation_logic(
-                run_id, 
-                run_name, 
-                ds_map[selected_ds_name], 
-                env_map[selected_env_name], 
-                selected_evals
-            )
-            st.rerun()
+        # Load all necessary data once
+        all_datasets = {d.id: d for d in store.list_datasets()}
+        all_envs = {e.id: e for e in store.list_environments()}
+        all_evals = {e.id: e for e in store.list_evaluators()}
+        
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        for i, suite_name in enumerate(selected_suites):
+            suite = ts_map[suite_name]
+            status_text.text(f"Running suite: {suite_name}...")
+            
+            # Resolve references
+            dataset = all_datasets.get(suite.dataset_id)
+            env = all_envs.get(suite.environment_id)
+            
+            # Resolve evaluator names for the logic function
+            suite_eval_names = []
+            for eid in suite.evaluator_ids:
+                if eid in all_evals:
+                    suite_eval_names.append(all_evals[eid].name)
+            
+            if dataset and env:
+                run_id = str(uuid.uuid4())
+                run_name = f"{run_name_base} - {suite_name}"
+                
+                run_evaluation_logic(
+                    run_id, 
+                    run_name, 
+                    dataset, 
+                    env, 
+                    suite_eval_names
+                )
+            else:
+                st.error(f"Skipping suite '{suite_name}': Missing dataset or environment.")
+            
+            progress_bar.progress((i + 1) / len(selected_suites))
+            
+        status_text.text("All runs completed!")
+        time.sleep(1)
+        st.rerun()
 
 # --- Page Views ---
+
+def render_dashboard_view():
+    st.markdown('<div class="main-header">Dashboard</div>', unsafe_allow_html=True)
+    
+    runs = store.list_runs()
+    if not runs:
+        st.info("No runs available for analysis.")
+        return
+
+    # Prepare Data
+    df = pd.DataFrame([r.to_dict() for r in runs])
+    df['created_at'] = pd.to_datetime(df['created_at'])
+    df = df.sort_values('created_at')
+
+    # Top Level Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Runs", len(df))
+    col2.metric("Avg Pass Rate", f"{df['pass_rate'].mean():.1f}%")
+    col3.metric("Total Tests", df['total_records'].sum())
+    col4.metric("Latest Pass Rate", f"{df.iloc[-1]['pass_rate']}%")
+
+    st.divider()
+
+    # Charts
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        st.subheader("Pass Rate Trend")
+        st.line_chart(df.set_index('created_at')['pass_rate'])
+    
+    with c2:
+        st.subheader("Run Status Distribution")
+        status_counts = df['status'].value_counts()
+        st.bar_chart(status_counts)
+
+    st.subheader("Recent Runs")
+    st.dataframe(
+        df[['name', 'environment', 'pass_rate', 'created_at']].sort_values('created_at', ascending=False).head(5),
+        use_container_width=True,
+        hide_index=True
+    )
 
 def render_runs_view():
     col_title, col_action = st.columns([6, 1])
@@ -324,6 +480,7 @@ def render_runs_view():
         st.info("No runs found.")
         return
 
+    # Summary Table
     data = []
     for r in runs:
         status_icon = "⚪"
@@ -345,6 +502,120 @@ def render_runs_view():
     
     st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
 
+    # Run Report Section
+    st.divider()
+    st.subheader("Run Report")
+    
+    run_options = {f"{r.name} ({r.created_at})": r for r in runs}
+    selected_run_key = st.selectbox("Select a run to view details:", list(run_options.keys()), index=0)
+    
+    if selected_run_key:
+        run = run_options[selected_run_key]
+        
+        # Run Metadata
+        with st.expander("Run Configuration", expanded=False):
+            c1, c2, c3 = st.columns(3)
+            c1.write(f"**ID:** {run.id}")
+            c1.write(f"**Environment:** {run.environment}")
+            c2.write(f"**Agent:** {run.agent}")
+            c2.write(f"**Dataset:** {run.dataset}")
+            c3.write(f"**Created:** {run.created_at}")
+            c3.write(f"**Duration:** {run.duration}")
+
+        # Results Analysis
+        if run.results:
+            results_df = pd.DataFrame(run.results)
+            
+            # Metrics Summary
+            st.write("#### Metrics Summary")
+            
+            # Flatten metrics for aggregation
+            all_metrics = []
+            for res in run.results:
+                if "metrics" in res:
+                    all_metrics.append(res["metrics"])
+            
+            if all_metrics:
+                metrics_df = pd.DataFrame(all_metrics)
+                st.dataframe(metrics_df.describe(), use_container_width=True)
+
+            # Detailed Results
+            st.write("#### Detailed Results")
+            
+            filter_failed = st.checkbox("Show Failed Only", value=False)
+            
+            display_df = results_df.copy()
+            if filter_failed:
+                display_df = display_df[display_df['passed'] == False]
+            
+            # Format for display
+            st.dataframe(
+                display_df, 
+                column_config={
+                    "passed": st.column_config.CheckboxColumn(
+                        "Passed",
+                        help="Did the test pass?",
+                        default=False,
+                    ),
+                    "metrics": st.column_config.Column(
+                        "Metrics Scores",
+                        width="medium"
+                    )
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Detail Inspector
+            st.write("#### Inspect Record")
+            selected_idx = st.number_input("Row Index to Inspect", min_value=0, max_value=len(display_df)-1 if not display_df.empty else 0, step=1)
+            
+            if not display_df.empty:
+                record = display_df.iloc[selected_idx]
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.write("**Input:**")
+                    st.json(record['input'])
+                    st.write("**Expected:**")
+                    st.json(record['expected'])
+                with c2:
+                    st.write("**Actual Output:**")
+                    st.info(record['actual'])
+                    st.write("**Metrics:**")
+                    st.json(record['metrics'])
+        else:
+            st.info("No detailed results available for this run.")
+
+def render_test_suites_view():
+    col_title, col_action = st.columns([6, 1])
+    with col_title:
+        st.markdown('<div class="main-header">Test Suites</div>', unsafe_allow_html=True)
+    with col_action:
+        if st.button("➕ New Suite", type="primary"):
+            new_test_suite_dialog()
+
+    suites = store.list_test_suites()
+    if not suites:
+        st.info("No test suites found.")
+        return
+
+    # Resolve names for display
+    datasets = {d.id: d.name for d in store.list_datasets()}
+    envs = {e.id: e.name for e in store.list_environments()}
+    
+    data = []
+    for s in suites:
+        data.append({
+            "Name": s.name,
+            "Description": s.description,
+            "Dataset": datasets.get(s.dataset_id, "Unknown"),
+            "Environment": envs.get(s.environment_id, "Unknown"),
+            "Evaluators Count": len(s.evaluator_ids),
+            "Created": s.created_at
+        })
+
+    st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
 def render_datasets_view():
     col_title, col_action = st.columns([6, 1])
     with col_title:
@@ -358,8 +629,41 @@ def render_datasets_view():
         st.info("No datasets found.")
         return
 
-    data = [{"Name": d.name, "Description": d.description, "File Path": d.file_path, "Created": d.created_at} for d in datasets]
+    data = [{"Name": d.name, "Description": d.description, "Created": d.created_at} for d in datasets]
     st.dataframe(pd.DataFrame(data), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.subheader("Edit Dataset")
+    
+    dataset_names = [d.name for d in datasets]
+    selected_dataset_name = st.selectbox("Select a dataset to edit:", dataset_names, index=None)
+    
+    if selected_dataset_name:
+        selected_dataset = next((d for d in datasets if d.name == selected_dataset_name), None)
+        
+        if selected_dataset:
+            # Convert content to formatted JSON string for editing
+            current_content = json.dumps(selected_dataset.content, indent=2) if selected_dataset.content else "[]"
+            
+            new_content_str = st.text_area(
+                f"JSON Content for '{selected_dataset.name}'", 
+                value=current_content,
+                height=400
+            )
+            
+            if st.button("Save Changes", type="primary"):
+                try:
+                    updated_content = json.loads(new_content_str)
+                    if not isinstance(updated_content, list):
+                        st.error("Dataset must be a JSON list of records.")
+                    else:
+                        selected_dataset.content = updated_content
+                        store.save_dataset(selected_dataset)
+                        st.success(f"Dataset '{selected_dataset.name}' updated successfully!")
+                        time.sleep(1)
+                        st.rerun()
+                except json.JSONDecodeError as e:
+                    st.error(f"Invalid JSON: {e}")
 
 def render_environments_view():
     col_title, col_action = st.columns([6, 1])
@@ -395,8 +699,12 @@ def render_evaluators_view():
 
 # --- Main Routing ---
 
-if selected_page == "Runs":
+if selected_page == "Dashboard":
+    render_dashboard_view()
+elif selected_page == "Runs":
     render_runs_view()
+elif selected_page == "Test Suites":
+    render_test_suites_view()
 elif selected_page == "Datasets":
     render_datasets_view()
 elif selected_page == "Environments":
